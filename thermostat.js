@@ -4,6 +4,7 @@ var Characteristic;
 function Thermostat(homebridge, platform, device){
   Service = homebridge.hap.Service;
   Characteristic = homebridge.hap.Characteristic;
+  this.platform = platform
   this.log = platform.log;
   this.config = platform.config;
   this.cube = platform.cube;
@@ -11,6 +12,7 @@ function Thermostat(homebridge, platform, device){
   this.deviceInfo = this.cube.getDeviceInfo(device.rf_address);
   this.deviceConfig = this.cube.getDeviceConfiguration(device.rf_address);
   this.lastNonZeroTemp = this.device.temp;
+  this.lastNonZeroTempOld = this.device.temp;
   this.name = this.deviceInfo.device_name + ' (' + this.deviceInfo.room_name + ')';
   this.temperatureDisplayUnits = Characteristic.TemperatureDisplayUnits.CELSIUS;
   this.comfortTemp = this.deviceConfig.comfort_temp || 20;
@@ -83,6 +85,19 @@ Thermostat.prototype = {
     if(this.device.temp != 0){
       this.lastNonZeroTemp = this.device.temp;
     }
+    /*else{
+      let cnt = devices.length
+      while(cnt){
+        cnt = cnt - 1
+        let devt = devices[cnt]
+        let curinfo = this.cube.getDeviceInfo(devt.rf_address);
+        if((curinfo.room_id == this.deviceInfo.room_id) && (curinfo.device_type == 3)){
+          this.lastNonZeroTemp = devt.temp;
+          break
+        }
+      }
+    }*/
+
     // publish changes in data so events can be triggered by data changes
     if(oldDevice.battery_low != this.device.battery_low){
       this.thermostatService.getCharacteristic(Characteristic.StatusLowBattery).updateValue(this.device.battery_low);
@@ -91,10 +106,13 @@ Thermostat.prototype = {
     if(oldDevice.setpoint != this.device.setpoint){
       this.thermostatService.getCharacteristic(Characteristic.TargetTemperature).updateValue(this.device.setpoint);
       this.log(this.name+' - received new target temperature '+this.device.setpoint);
+      this.platform.setHouseTemp()
     }
-    if(oldDevice.temp != this.device.temp){
+    if(this.lastNonZeroTempOld != this.lastNonZeroTemp){
+      this.lastNonZeroTempOld = this.lastNonZeroTemp;
       this.thermostatService.getCharacteristic(Characteristic.CurrentTemperature).updateValue(this.lastNonZeroTemp);
-      this.log(this.name+' - received new temperature '+this.device.temp);
+      this.log(this.name+' - received new temperature '+this.lastNonZeroTemp);
+      this.platform.setHouseTemp()
     }
     if(oldDevice.error != this.device.error || oldDevice.link_error != this.device.link_error){
       this.thermostatService.getCharacteristic(Characteristic.StatusFault).updateValue(this.errorStatus());
@@ -173,6 +191,7 @@ Thermostat.prototype = {
       that.cube.setTemperature(that.device.rf_address, targetTemp, targetMode);
       that.sendFault = false;
     }, function(){that.sendFault = true});
+    this.platform.setHouseTemp();
     callback(null, this.targetHeatingCoolingState);
   },
   getCurrentTemperature: function(callback) {
@@ -195,6 +214,7 @@ Thermostat.prototype = {
       that.cube.setTemperature(that.device.rf_address, value, that.device.mode);
       that.sendFault = false;
     }, function(){that.sendFault = true});
+    this.platform.setHouseTemp();
     callback(null, value);
   },
   getTemperatureDisplayUnits: function(callback) {

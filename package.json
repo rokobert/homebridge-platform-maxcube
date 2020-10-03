@@ -33,7 +33,9 @@
     "homebridge": ">=0.4.10"
   },
   "dependencies": {
-    "maxcube2": "^2.1.2"
+    "maxcube2": "^2.1.2",
+    "mqtt": "^3.0.0",
+    "sprintf-js": "^1.1.2"
   },
   "homepage": "https://github.com/normen/homebridge-platform-maxcube#readme",
   "main": "index.js"

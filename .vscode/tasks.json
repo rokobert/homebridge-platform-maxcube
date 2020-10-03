@@ -1,0 +1,13 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Homebridge konc remote debugger",
+            "type": "shell",
+            "command": "ssh -tL 9221:localhost:9229 root@dietpi \"sudo node --inspect-brk /usr/local/lib/node_modules/homebridge/lib/cli.js -D -P /mnt/dietpi_userdata/homebridge-platform-maxcube\"",
+            "problemMatcher":[],
+        },
+    ]
+}
