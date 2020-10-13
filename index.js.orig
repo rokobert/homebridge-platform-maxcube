@@ -1,0 +1,518 @@
+var Accessory, Service, Characteristic, UUIDGen;
+var MaxCube = require('maxcube2');
+var Thermostat = require('./thermostat');
+var ContactSensor = require('./contactsensor');
+<<<<<<< HEAD
+const mqtt = require('mqtt')
+const sprintf=require("sprintf-js").sprintf;
+
+var Service;
+var Characteristic;
+=======
+>>>>>>> 7eb18d5009cd03ff3209d35b72d76925b582b2cb
+var _homebridge;
+
+function MaxCubePlatform(log, config, api){
+  const self = this;
+  this.api = api;
+  this.log = log;
+  this.config = config;
+  this.paused = false;
+  this.windowsensor = config.windowsensor === undefined ? true : config.windowsensor;
+  this.myAccessories = [];
+<<<<<<< HEAD
+  this.myWallThermostat = [];
+  this.myAccessories.push(new MaxCubeLinkSwitchAccessory(this.log, this.config, this));
+  this.myAccessories.push(new MaxCubeHouseThermostatAccessory(this.log, this.config, this));
+=======
+>>>>>>> 7eb18d5009cd03ff3209d35b72d76925b582b2cb
+  this.updateRate = 10000;
+  this.connected = false;
+  if(!this.config || !this.config.ip || !this.config.port){
+    this.log("Warning: MaxCube Plugin not configured!");
+    return;
+  }
+  this.maxSwitch = null;
+  this.api.on('didFinishLaunching', function () {
+    self.cube = new MaxCube(self.config.ip, self.config.port);
+    self.setupCube();
+    if(!self.maxSwitch){
+      self.maxSwitch = new MaxCubeLinkSwitchAccessory(self);
+    }
+    self.cube.getConnection();
+  });
+}
+MaxCubePlatform.prototype = {
+  setupCube: function() {
+    let that = this;
+    this.cube.on('error', function (error) {
+      that.connected = false;
+      that.log("Max! Cube connection error!");
+      that.log(error);
+      if(that.maxSwitch) that.maxSwitch.sendStatus();
+    });
+    this.cube.on('closed', function () {
+      that.connected = false;
+      that.paused = true;
+      that.log("Max! Cube connection closed.");
+      if(that.maxSwitch) that.maxSwitch.sendStatus();
+    });
+    this.cube.on('connected', function () {
+      that.connected = true;
+      that.paused = false;
+      that.log("Connected to Max! Cube.");
+<<<<<<< HEAD
+      // inform HomeKit about connection switch state
+      that.myAccessories[0].sendStatus();
+      if(!that.wasConnected){
+        // first connection, list devices, create accessories and start update loop
+        that.cube.getDeviceStatus().then(function (devices) {
+          that.wasConnected = true;
+          
+          if(that.config.allow_wall_thermostat){// if allow first find wall thermostats
+            devices.forEach(function (device) {
+              var deviceInfo = that.cube.getDeviceInfo(device.rf_address);
+              var isWall = deviceInfo.device_type == 3; // true if wall thermostat
+              if (isWall) {
+                that.myAccessories.push(new Thermostat(_homebridge, that, device));
+                that.myWallThermostat.push(deviceInfo);
+              }
+            });
+          }
+
+          devices.forEach(function (device) {
+=======
+      if(that.maxSwitch) that.maxSwitch.sendStatus();
+      that.cube.getDeviceStatus().then(function (devices) {
+        var deviceList = [];
+        devices.forEach(function (device) {
+          if(!that.haveDevice(device)) {
+>>>>>>> 7eb18d5009cd03ff3209d35b72d76925b582b2cb
+            var deviceInfo = that.cube.getDeviceInfo(device.rf_address);
+            var isShutter = deviceInfo.device_type == 4 // true if contact sensor
+            //var isWall = that.config.allow_wall_thermostat && (deviceInfo.device_type == 3);
+            
+            if (isShutter && that.windowsensor) {
+              that.myAccessories.push(new ContactSensor(_homebridge, that, device));
+            }
+            var deviceTypeOk = that.config.only_wall_thermostat ? false : (deviceInfo.device_type == 1 || deviceInfo.device_type == 2);
+            if (deviceTypeOk) {
+              // check if is room wall thermostat
+              let nowt = true
+              for(let i = 0; i < that.myWallThermostat.length; ++i){
+                let wt = that.myWallThermostat[i]
+                if(wt.room_id == deviceInfo.room_id){
+                  nowt = false
+                  break
+                }
+              }
+              if(nowt) that.myAccessories.push(new Thermostat(_homebridge, that, device));
+            }
+<<<<<<< HEAD
+          });
+          callback(that.myAccessories);
+          that.updateThermostatData();
+          that.setHouseTemp();
+=======
+          }
+          deviceList.push(device);
+>>>>>>> 7eb18d5009cd03ff3209d35b72d76925b582b2cb
+        });
+        that.myAccessories.forEach(function (accessory, idx, obj){
+          if(deviceList.find(device=>device.rf_address === accessory.device.rf_address) === undefined) {
+            // remove from homekit
+            that.log('Removing ' + accessory.displayName + ' from HomeKit');
+            that.api.unregisterPlatformAccessories('homebridge-platform-maxcube', 'MaxCubePlatform', [accessory.accessory]);
+            obj.splice(idx,1);
+          } else {
+            // apply cube for restored devices
+            accessory.setCube(that.cube);
+          }
+        });
+        that.updateThermostatData();
+      });
+    });
+  },
+  configureAccessory: function(accessory) {
+    let that = this;
+    if (!this.config) { // happens if plugin is disabled and still active accessories
+      return;
+    }
+    this.log('Restoring ' + accessory.displayName + ' from HomeKit');
+    accessory.reachable = true;
+    var device = accessory.context.device;
+    var type = accessory.context.deviceType;
+    if(type === 0){
+      this.myAccessories.push(new Thermostat(_homebridge, this, device, accessory));
+    } else if(type === 1){
+      this.myAccessories.push(new ContactSensor(_homebridge, this, device, accessory));
+    } else if(accessory.context.isMaxSwitch){
+      this.maxSwitch = new MaxCubeLinkSwitchAccessory(this, accessory);
+    } else{
+      // don't know this, delete it from HomeKit
+      this.api.on('didFinishLaunching', function () {
+        that.log('Removing unknown Accessory ' + accessory.displayName + ' from HomeKit');
+        that.api.unregisterPlatformAccessories('homebridge-platform-maxcube', 'MaxCubePlatform', [accessory]);
+      });
+    }
+  },
+  updateThermostatData: function(){
+    // called periodically to trigger maxcube data update
+    if(this.updateTimeout) clearTimeout(this.updateTimeout);
+    this.updateTimeout = setTimeout(this.updateThermostatData.bind(this),this.updateRate);
+    let that = this;
+    if(!this.paused) this.cube.getConnection().then(function () {
+      that.cube.updateDeviceStatus();
+    });
+  },
+<<<<<<< HEAD
+  setHouseTemp: function (){
+    let i = this.myAccessories.length // number of thermostats
+    let lt = this.myAccessories[1] // Seltron thermostat
+    let tt = lt.offTemp // target temperature
+    let ct = 22 // current temperature
+    let dif = -30 // diference
+    while(i>2){
+      --i
+      let acc = this.myAccessories[i]
+      if(acc.deviceInfo.device_type <=3  && acc.deviceInfo.device_type >=1){
+        if(acc.targetHeatingCoolingState != Characteristic.TargetHeatingCoolingState.OFF){
+          if(acc.lastNonZeroTemp == 0) continue
+          //this.log(acc)
+          let df = acc.device.setpoint - acc.lastNonZeroTemp
+          //this.log(dif, acc.device.setpoint , acc.lastNonZeroTemp)
+          if(df > dif){ // search maximum difference and use current temperature
+            dif = df
+            ct = acc.lastNonZeroTemp
+          }
+
+          const dsp = acc.device.setpoint
+          if(acc.lastNonZeroTemp < dsp){ // targe temp must be higher than current          
+            if(tt < dsp){ // serach higher target temp
+              tt = dsp
+            }
+          }
+        }
+      }
+    }
+
+    //this.log(ct, lt.currentTemp, tt, lt.targetTemp)
+    let sendmqtt = false
+    if(lt.currentTemp != ct){
+      sendmqtt = true
+      lt.currentTemp = ct
+      lt.thermostatService.getCharacteristic(Characteristic.CurrentTemperature).updateValue(lt.currentTemp);
+      this.log(lt.name+' - set new temperature, current:'+ lt.currentTemp)
+    }
+    if(lt.targetTemp != tt){
+      sendmqtt = true
+      lt.targetTemp = tt
+      lt.thermostatService.getCharacteristic(Characteristic.TargetTemperature).updateValue(lt.targetTemp);
+      this.log(lt.name+' - set new temperature, target:'+ lt.targetTemp)
+    }
+    if(sendmqtt){
+      if(lt.mqtt_ok == true){
+        let msg = sprintf('%d;%d;%d', lt.targetTemp*100, lt.ecoTemp*100, lt.currentTemp*100)
+        lt.mqttclient.publish('/house/climate/temperatures', msg, function (err) {
+            if (!err) {
+                //console.log('Mqtt send')
+            }
+        })
+      }
+=======
+  haveDevice: function(device){
+    return (this.myAccessories.find(accessory => accessory.device.rf_address === device.rf_address) !== undefined); 
+  },
+  startCube: function(){
+    if(!this.cube) return;
+    this.log("Try connecting to Max! Cube..");
+    this.cube.getConnection();
+  },
+  stopCube: function(){
+    if(!this.cube) return;
+    let that = this;
+    this.log("Closing connection to Max! Cube..");
+    if(this.cube){
+      try{this.cube.close()}catch(error){that.error(error)}
+>>>>>>> 7eb18d5009cd03ff3209d35b72d76925b582b2cb
+    }
+  }
+};
+
+// switch accessory to enable/disable cube connection
+function MaxCubeLinkSwitchAccessory(cubePlatform, accessory = null){
+  this.log = cubePlatform.log;
+  this.cubePlatform = cubePlatform;
+  this.name = "Max! Link";
+  if(accessory){
+    this.accessory = accessory;
+    this.service = accessory.getService(Service.Switch);
+  } else {
+    var uuidBase = this.name;
+    if(cubePlatform.config.name){
+      uuidBase = uuidBase + cubePlatform.config.name;
+    }
+    this.accessory = new Accessory(this.name, UUIDGen.generate(uuidBase));
+    this.accessory.context.isMaxSwitch = true;
+    this.service = new Service.Switch("Max! Link");
+    this.accessory.addService(this.service);
+    this.accessory.getService(Service.AccessoryInformation)
+     .setCharacteristic(Characteristic.Manufacturer, "EQ-3")
+     .setCharacteristic(Characteristic.Model, "Max! Cube")
+    this.log('Creating new accessory for ' + this.name);
+    cubePlatform.api.registerPlatformAccessories('homebridge-platform-maxcube', 'MaxCubePlatform', [this.accessory] );
+  }
+  this.service.getCharacteristic(Characteristic.On).value = false;
+  this.service.getCharacteristic(Characteristic.On)
+      .on('set', this.setConnectionState.bind(this))
+      .on('get', this.getConnectionState.bind(this));
+}
+
+MaxCubeLinkSwitchAccessory.prototype = {
+  getServices: function() {
+    var informationService = new Service.AccessoryInformation();
+    informationService
+    .setCharacteristic(Characteristic.Manufacturer, "EQ-3")
+    .setCharacteristic(Characteristic.Model, "Max! Cube")
+    return [informationService, this.service];
+  },
+  setConnectionState: function(state, callback){
+    if(state){
+      this.cubePlatform.startCube();
+    }else{
+      this.cubePlatform.stopCube();
+    }
+    callback(null, state);
+  },
+  getConnectionState: function(callback){
+    callback(null, this.cubePlatform.connected);
+  },
+  sendStatus: function(){
+    this.service.getCharacteristic(Characteristic.On).updateValue(this.cubePlatform.connected);
+  }
+}
+
+// thermostat accessory to for house heating sysytem over mqtt
+function MaxCubeHouseThermostatAccessory(log, config, cubePlatform){
+  //Service = homebridge.hap.Service;
+  //Characteristic = homebridge.hap.Characteristic;
+  this.log = log;
+  this.config = config;
+  this.cubePlatform = cubePlatform;
+
+  this.temperatureDisplayUnits = Characteristic.TemperatureDisplayUnits.CELSIUS;
+  this.targetHeatingCoolingState = Characteristic.TargetHeatingCoolingState.HEAT;
+  this.targetTemp = 22
+  this.currentTemp = 22
+  this.ecoTemp = 17
+  this.offTemp = 4
+  this.maxTemp = 30
+
+  this.informationService = new Service.AccessoryInformation();
+  this.informationService
+    .setCharacteristic(Characteristic.Manufacturer, 'EQ-3')
+    .setCharacteristic(Characteristic.Model, "Seltron DD")
+    //.setCharacteristic(Characteristic.SerialNumber, this.device.rf_address)
+
+  this.outTemp = 8.5
+  this.sensorOutTemp = new Service.TemperatureSensor("Outside temperature", "Outside")
+  this.sensorOutTemp
+  .getCharacteristic(Characteristic.CurrentTemperature)
+  .on('get', this.getOutTemp.bind(this))
+
+  this.sensorOutTemp
+  .getCharacteristic(Characteristic.Name)
+  .on('get', this.getOutTempName.bind(this))
+
+  this.ovenTemp = 8.5
+  this.sensorOvenTemp = new Service.TemperatureSensor("Oven temperature", "Oven")
+  this.sensorOvenTemp
+  .getCharacteristic(Characteristic.CurrentTemperature)
+  .on('get', this.getOvenTemp.bind(this))
+
+  this.sensorOvenTemp
+  .getCharacteristic(Characteristic.Name)
+  .on('get', this.getOvenTempName.bind(this))
+
+  this.name = "Seltron";
+  this.thermostatService = new Service.Thermostat(this.name);
+  this.thermostatService
+    .getCharacteristic(Characteristic.CurrentHeatingCoolingState)
+    .on('get', this.getCurrentHeatingCoolingState.bind(this))
+    //.updateValue(this.targetHeatingCoolingState);
+
+  this.thermostatService
+    .getCharacteristic(Characteristic.TargetHeatingCoolingState)
+    .on('get', this.getTargetHeatingCoolingState.bind(this))
+    .on('set', this.setTargetHeatingCoolingState.bind(this))
+    //.updateValue(this.targetHeatingCoolingState);
+
+  this.thermostatService
+    .getCharacteristic(Characteristic.CurrentTemperature)
+    .on('get', this.getCurrentTemperature.bind(this))
+    //.updateValue(this.currentTemp);
+
+  this.thermostatService
+    .getCharacteristic(Characteristic.TargetTemperature)
+    .setProps({
+      maxValue: 30,
+      minValue: 5,
+      minStep: 0.5
+    })
+    .on('get', this.getTargetTemperature.bind(this))
+    .on('set', this.setTargetTemperature.bind(this))
+    //.updateValue(this.targetTemp);
+
+  this.thermostatService
+    .getCharacteristic(Characteristic.TemperatureDisplayUnits)
+    .on('get', this.getTemperatureDisplayUnits.bind(this));
+
+  this.mqtt_ok = false
+  let that = this   
+  this.mqttclient  = mqtt.connect('mqtt://localhost')
+  this.mqttclient.on('connect', function () {
+      //mqttclient.subscribe('/house/climate/temperatures', function (err) {
+    //if (!err) {
+        //client.publsh('presence', 'Hello mqtt')
+    that.log("Mqtt broker connected")
+    that.mqtt_ok = true
+  })
+  
+  /*this.thermostatService
+    .addCharacteristic(new Characteristic.StatusLowBattery())
+    .on('get', this.getLowBatteryStatus.bind(this));
+
+  this.thermostatService
+    .addCharacteristic(new Characteristic.StatusFault())
+    .on('get', this.getErrorStatus.bind(this));
+  */
+
+  //this.cube.on('device_list', this.refreshDevice.bind(this));    
+}
+
+MaxCubeHouseThermostatAccessory.prototype = {
+  getServices: function() {
+    return [this.informationService, this.thermostatService, this.sensorOutTemp, this.sensorOvenTemp];
+  },
+  /*checkHeatingCoolingState: function(){
+    let oldCoolingState = this.targetHeatingCoolingState;
+    if(this.device.mode == 'MANUAL'){
+      let isEco = this.device.setpoint == this.ecoTemp;
+      let isOff = this.device.setpoint == this.offTemp;
+      if(isOff) this.targetHeatingCoolingState = Characteristic.TargetHeatingCoolingState.OFF;
+      else if(isEco) this.targetHeatingCoolingState = Characteristic.TargetHeatingCoolingState.COOL;
+      else this.targetHeatingCoolingState = Characteristic.TargetHeatingCoolingState.HEAT;
+    }else{
+      this.targetHeatingCoolingState = Characteristic.TargetHeatingCoolingState.AUTO;
+    }
+    //only send change notification when we already computed state once
+    if(oldCoolingState !== undefined && oldCoolingState != this.targetHeatingCoolingState){
+      this.log(this.name+' - computed new target mode '+this.targetHeatingCoolingState);
+      this.thermostatService.getCharacteristic(Characteristic.TargetHeatingCoolingState).updateValue(this.targetHeatingCoolingState);
+      this.thermostatService.getCharacteristic(Characteristic.CurrentHeatingCoolingState).updateValue(this.currentHeatingCoolingState());
+    }
+    return this.targetHeatingCoolingState;
+  },*/
+  getCurrentHeatingCoolingState: function(callback) {
+    //this.checkHeatingCoolingState();
+    callback(null, this.targetHeatingCoolingState);
+  },
+  /*currentHeatingCoolingState: function(){
+    if(this.targetHeatingCoolingState == Characteristic.TargetHeatingCoolingState.AUTO){
+      return Characteristic.TargetHeatingCoolingState.HEAT;
+    }
+    else {
+      return this.targetHeatingCoolingState;
+    }
+  },*/
+  getTargetHeatingCoolingState: function(callback) {
+    //this.checkHeatingCoolingState();
+    callback(null, this.targetHeatingCoolingState);
+  },
+  setTargetHeatingCoolingState: function(value, callback) {
+    /*this.lastManualChange = new Date();
+    let that = this;
+    var targetMode = 'MANUAL';
+    var targetTemp = this.device.setpoint;
+    this.targetHeatingCoolingState = value;
+    if(value == Characteristic.TargetHeatingCoolingState.OFF) {
+      targetTemp = this.offTemp;
+    }
+    else if(value == Characteristic.TargetHeatingCoolingState.HEAT) {
+      if(targetTemp == this.offTemp){
+        targetTemp = this.comfortTemp;
+      }
+    }
+    else if(value == Characteristic.TargetHeatingCoolingState.COOL) {
+      targetTemp = this.ecoTemp;
+    }
+    else if(value == Characteristic.TargetHeatingCoolingState.AUTO) {
+      if(targetTemp == this.offTemp){
+        targetTemp = this.comfortTemp;
+      }
+      targetMode = 'AUTO';
+    }
+    this.thermostatService.getCharacteristic(Characteristic.TargetTemperature).updateValue(targetTemp);
+    this.device.mode = targetMode;
+    this.device.setpoint = targetTemp;
+    this.checkHeatingCoolingState();
+    let errorStatus = that.errorStatus();
+    this.cube.getConnection().then(function () {
+      if(errorStatus != 0){
+        that.log(that.name+' has error state '+ errorStatus + ' - sending error reset to cube');
+        that.cube.resetError(that.device.rf_address);
+      }
+      that.log(that.name+' - setting mode '+targetMode+' at temperature '+targetTemp);
+      that.cube.setTemperature(that.device.rf_address, targetTemp, targetMode);
+      that.sendFault = false;
+    }, function(){that.sendFault = true});*/
+    callback(null, this.targetHeatingCoolingState);
+  },
+  getCurrentTemperature: function(callback) {
+    callback(null, this.currentTemp);
+  },
+  getTargetTemperature: function(callback) {
+    callback(null, this.targetTemp);
+  },
+  getOutTemp: function(callback) {
+    callback(null, this.outTemp);
+  },
+  getOutTempName: function(callback) {
+    callback(null, "Outside");
+  },
+  getOvenTemp: function(callback) {
+    callback(null, 62);
+  },
+  getOvenTempName: function(callback) {
+    callback(null, "Oven");
+  },
+
+  setTargetTemperature: function(value, callback) {
+    /*this.lastManualChange = new Date();
+    let that = this;
+    this.device.setpoint = value;
+    let errorStatus = this.errorStatus();
+    if(this.cube) this.cube.getConnection().then(function () {
+      if(errorStatus != 0){
+        that.log(that.name+' has error state '+ errorStatus + ' - sending error reset to cube');
+        that.cube.resetError(that.device.rf_address);
+      }
+      that.log(that.name+' - setting temperature '+ value);
+      that.cube.setTemperature(that.device.rf_address, value, that.device.mode);
+      that.sendFault = false;
+    }, function(){that.sendFault = true});*/
+    callback(null, value);
+  },
+  getTemperatureDisplayUnits: function(callback) {
+    callback(null, this.temperatureDisplayUnits);
+  },
+}
+
+module.exports = function(homebridge) {
+  Service = homebridge.hap.Service;
+  Characteristic = homebridge.hap.Characteristic;
+  UUIDGen = homebridge.hap.uuid;
+  Accessory = homebridge.platformAccessory;
+  _homebridge = homebridge;
+  homebridge.registerPlatform('homebridge-platform-maxcube', 'MaxCubePlatform', MaxCubePlatform, true);
+}
